@@ -2,7 +2,7 @@ import pandas as pd
 
 df = pd.read_csv('~/Downloads/TMDB_movie_dataset_v11.csv')
 
-df.drop(columns=['imdb_id', 'spoken_languages', 'production_countries', 'production_companies', 'runtime', 'adult', 'backdrop_path', 'homepage', 'overview', 'tagline', 'original_title', 'original_language', 'status', 'poster_path'], inplace=True)
+df.drop(columns=['imdb_id', 'spoken_languages', 'production_countries', 'production_companies', 'runtime', 'adult', 'backdrop_path', 'homepage', 'overview', 'tagline', 'original_title', 'original_language', 'status', 'poster_path', 'genres', 'popularity', 'budget'], inplace=True)
 df['keywords'] = df['keywords'].fillna('')
 df['contains_superhero'] = df['keywords'].apply(lambda x: 1 if 'superhero' in x else 0)
 

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comic Book Movie Fatigue - Is the Superhero Genre Dying?</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-annotation@2.5.1/build/d3-annotation.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="fade-in">Comic Book Movie Fatigue</h1>
+        <p class="subtitle fade-in delay-1">Has the Superhero Genre Reached its Peak?</p>
+        
+        <div class="hero-icons fade-in delay-2">
+            🦸‍♂️ 🦸‍♀️ 💥 🎬 📊
+        </div>
+        
+        <p class="description fade-in delay-3">
+            From Blade's groundbreaking success in 1998 that revived Marvel's live-action fortunes, 
+            through the X-Men and Spider-Man franchises that proved superhero films could be both 
+            critically acclaimed and commercially successful, to Iron Man's 2008 launch of the MCU 
+            that dominated Hollywood for over a decade. But after the epic conclusion of Avengers: 
+            Endgame, audiences seem to be experiencing fatigue. Recent box office failures like 
+            The Marvels, Ant-Man: Quantumania, and Black Adam suggest the golden age may be ending. 
+            Join us on a data-driven journey through the rise, peak, and potential decline of the 
+            superhero genre.
+        </p>
+
+        <!-- Chart Section -->
+        <div class="chart-section fade-in delay-5">
+            <h2>Superhero Movies Released Per Year</h2>
+            <p class="chart-description">
+                The rise and potential decline of superhero films over the past 25 years
+            </p>
+            <div id="superhero-chart"></div>
+            
+            <!-- Navigation Controls -->
+            <div class="navigation-controls">
+                <button id="prev-btn" class="nav-btn" disabled>← Previous</button>
+                <span id="step-indicator">Step 0 of 3</span>
+                <button id="next-btn" class="nav-btn">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/main.js"></script>
+    <script>
+        // D3.js Bar Chart for Superhero Movies
+        async function createSuperheroChart() {
+            // Load the CSV data
+            const data = await d3.csv("TMDB_movie_dataset_v11_clean.csv");
+            
+            // Filter for superhero movies and extract year
+            const superheroData = data
+                .filter(d => d.contains_superhero == 1)
+                .map(d => ({
+                    year: d.release_date,
+                    title: d.title
+                }))
+                .filter(d => d.year < 2025)
+            
+            // Group by year and count
+            const yearCounts = {};
+            superheroData.forEach(d => {
+                yearCounts[d.year] = (yearCounts[d.year] || 0) + 1;
+            });
+            
+            // Convert to array and sort by year
+            const chartData = Object.entries(yearCounts)
+                .map(([year, count]) => ({ year: parseInt(year), count }))
+                .sort((a, b) => a.year - b.year);
+            
+            console.log("Chart data:", chartData);
+            console.log("Year range:", d3.min(chartData, d => d.year), "to", d3.max(chartData, d => d.year));
+            
+            // Chart dimensions
+            const margin = { top: 120, right: 100, bottom: 80, left: 60 };
+            const width = 900 - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+            
+            // Create SVG
+            const svg = d3.select("#superhero-chart")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // X scale
+            const x = d3.scaleBand()
+                .range([0, width])
+                .domain(chartData.map(d => d.year))
+                .padding(0.2);
+            
+            // Y scale
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(chartData, d => d.count)])
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => "'" + d.toString().slice(-2)))
+                .selectAll("text")
+                .style("text-anchor", "end")
+                .attr("dx", "-.8em")
+                .attr("dy", "1em")
+                .attr("transform", "rotate(-45)")
+                .style("font-size", "10px");
+            
+            // Add Y axis
+            svg.append("g")
+                .call(d3.axisLeft(y));
+            
+            // Create bars group for progressive display
+            const barsGroup = svg.append("g").attr("class", "bars-group");
+            
+            // Add bars
+            barsGroup.selectAll("rect")
+                .data(chartData)
+                .enter()
+                .append("rect")
+                .attr("x", d => x(d.year))
+                .attr("y", d => y(d.count))
+                .attr("width", x.bandwidth())
+                .attr("height", d => height - y(d.count))
+                .attr("fill", d => {
+                    return "#4ecdc4";
+                })
+                .attr("opacity", 0) // Start with opacity 0
+                .on("mouseover", function(event, d) {
+                    // Only allow hover effects for visible bars
+                    const cutoffYear = currentStep === 0 ? 1999 : 
+                                     currentStep === 1 ? 2008 : 
+                                     currentStep === 2 ? 2019 : 2024;
+                    
+                    if (d.year <= cutoffYear) {
+                        d3.select(this)
+                            .attr("opacity", 1)
+                            .attr("stroke", "#fff")
+                            .attr("stroke-width", 2);
+                        
+                        // Remove any existing tooltips first
+                        d3.selectAll(".tooltip").remove();
+                        
+                        // Show tooltip
+                        const tooltip = d3.select("body").append("div")
+                            .attr("class", "tooltip")
+                            .style("position", "absolute")
+                            .style("background", "rgba(0,0,0,0.8)")
+                            .style("color", "white")
+                            .style("padding", "8px")
+                            .style("border-radius", "4px")
+                            .style("pointer-events", "none")
+                            .style("font-size", "12px")
+                            .style("z-index", "1000");
+                        
+                        tooltip.html(`<strong>${d.year}</strong><br/>${d.count} superhero movies`)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 10) + "px");
+                    }
+                })
+                .on("mouseout", function(event, d) {
+                    // Reset to the appropriate opacity based on current step
+                    const cutoffYear = currentStep === 0 ? 1999 : 
+                                     currentStep === 1 ? 2008 : 
+                                     currentStep === 2 ? 2019 : 2024;
+                    
+                    if (d.year <= cutoffYear) {
+                        d3.select(this)
+                            .attr("opacity", 0.8)
+                            .attr("stroke", "none");
+                    } else {
+                        d3.select(this)
+                            .attr("opacity", 0)
+                            .attr("stroke", "none");
+                    }
+                    
+                    // Force remove all tooltips
+                    d3.selectAll(".tooltip").remove();
+                });
+            
+            // Add axis labels
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("x", width / 2)
+                .attr("y", height + margin.bottom - 10)
+                .style("fill", "#b8c5d6")
+                .text("Year");
+            
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -height / 2)
+                .attr("y", -margin.left + 20)
+                .style("fill", "#b8c5d6")
+                .text("Number of Superhero Movies");
+            
+            // Add annotations for key events
+            const annotations = [
+                {
+                    note: {
+                        label: "Iron Man (2008) - MCU Begins",
+                        title: "The Birth of the MCU",
+                        align: "middle"
+                    },
+                    year: 2008,
+                    type: "success"
+                },
+                {
+                    note: {
+                        label: "Avengers: Endgame (2019) - Peak of MCU",
+                        title: "The Golden Age Ends",
+                        align: "middle"
+                    },
+                    year: 2019,
+                    type: "peak"
+                },
+                {
+                    note: {
+                        label: "Madame Web, Kraven (2024) - Major Flops",
+                        title: "Superhero Fatigue Hits?",
+                        align: "middle"
+                    },
+                    year: 2024,
+                    type: "flop"
+                }
+            ];
+            
+            // Create annotation group
+            const annotationGroup = svg.append("g")
+                .attr("class", "annotation-group");
+            
+            // Step navigation variables
+            let currentStep = 0;
+            const totalSteps = annotations.length;
+            
+            // Function to update step indicator
+            function updateStepIndicator() {
+                document.getElementById('step-indicator').textContent = `Step ${currentStep} of ${totalSteps}`;
+                document.getElementById('prev-btn').disabled = currentStep === 0;
+                
+                // Update button text and functionality on final step
+                const nextBtn = document.getElementById('next-btn');
+                if (currentStep === totalSteps) {
+                    nextBtn.textContent = "Explore the trends...";
+                    nextBtn.disabled = false; // Enable the button on final step
+                    nextBtn.onclick = function() {
+                        window.location.href = 'trends.html';
+                    };
+                } else {
+                    nextBtn.textContent = "Next →";
+                    nextBtn.disabled = false;
+                    nextBtn.onclick = function() {
+                        if (currentStep < totalSteps) {
+                            currentStep++;
+                            showAnnotationsUpToStep(currentStep);
+                            updateStepIndicator();
+                        }
+                    };
+                }
+            }
+            
+            // Function to show annotations and bars up to current step
+            function showAnnotationsUpToStep(step) {
+                // Clear all existing annotations
+                annotationGroup.selectAll("*").remove();
+                
+                // Clear any lingering tooltips
+                d3.selectAll(".tooltip").remove();
+                
+                // Determine the cutoff year based on current step
+                let cutoffYear = 1999; // Start with no bars visible
+                if (step >= 1) cutoffYear = 2008; // Show bars up to 2008
+                if (step >= 2) cutoffYear = 2019; // Show bars up to 2019
+                if (step >= 3) cutoffYear = 2024; // Show all bars
+                
+                // Update bar visibility based on cutoff year
+                barsGroup.selectAll("rect")
+                    .transition()
+                    .duration(500)
+                    .attr("opacity", d => d.year <= cutoffYear ? 0.8 : 0);
+                
+                // Show annotations up to the current step
+                for (let i = 0; i < step; i++) {
+                    const annotation = annotations[i];
+                    const dataPoint = chartData.find(d => d.year === annotation.year);
+                    if (!dataPoint) continue;
+                    
+                    const xPos = x(dataPoint.year) + x.bandwidth() / 2;
+                    const yPos = y(dataPoint.count);
+                    
+                    // Add connector line
+                    annotationGroup.append("line")
+                        .attr("x1", xPos)
+                        .attr("y1", yPos)
+                        .attr("x2", xPos)
+                        .attr("y2", yPos - 40)
+                        .attr("class", `annotation-connector ${annotation.type}`)
+                        .style("stroke-dasharray", "5,5")
+                        .style("stroke", annotation.type === "success" ? "rgba(78, 205, 196, 0.8)" : 
+                               annotation.type === "peak" ? "rgba(255, 107, 107, 0.8)" : 
+                               "rgba(255, 167, 38, 0.8)")
+                        .style("stroke-width", 2);
+                    
+                    // Add annotation box
+                    const noteGroup = annotationGroup.append("g")
+                        .attr("transform", `translate(${xPos}, ${yPos - 60})`);
+                    
+                    // Background rectangle
+                    const textWidth = Math.max(
+                        annotation.note.title.length * 7,
+                        annotation.note.label.length * 5
+                    );
+                    const textHeight = 40;
+                    
+                    noteGroup.append("rect")
+                        .attr("width", textWidth + 20)
+                        .attr("height", textHeight)
+                        .attr("x", -textWidth / 2 - 10)
+                        .attr("y", -textHeight / 2)
+                        .attr("rx", 8)
+                        .attr("class", `annotation-note ${annotation.type}`)
+                        .style("fill", annotation.type === "success" ? "rgba(78, 205, 196, 0.7)" : 
+                               annotation.type === "peak" ? "rgba(255, 107, 107, 0.7)" : 
+                               "rgba(255, 167, 38, 0.7)")
+                        .style("stroke", annotation.type === "success" ? "rgba(78, 205, 196, 1)" : 
+                               annotation.type === "peak" ? "rgba(255, 107, 107, 1)" : 
+                               "rgba(255, 167, 38, 1)")
+                        .style("stroke-width", 1);
+                    
+                    // Title text
+                    noteGroup.append("text")
+                        .attr("text-anchor", "middle")
+                        .attr("x", 0)
+                        .attr("y", -12)
+                        .style("font-size", "10px")
+                        .style("font-weight", "bold")
+                        .style("fill", "#1a1a2e")
+                        .text(annotation.note.title);
+                    
+                    // Label text
+                    noteGroup.append("text")
+                        .attr("text-anchor", "middle")
+                        .attr("x", 0)
+                        .attr("y", 2)
+                        .style("font-size", "9px")
+                        .style("fill", "#1a1a2e")
+                        .text(annotation.note.label);
+                }
+            }
+            
+            // Navigation event listeners
+            document.getElementById('prev-btn').addEventListener('click', function() {
+                if (currentStep > 0) {
+                    currentStep--;
+                    showAnnotationsUpToStep(currentStep);
+                    updateStepIndicator();
+                }
+            });
+            
+            // Initialize
+            updateStepIndicator();
+            showAnnotationsUpToStep(currentStep);
+        }
+        
+        // Initialize chart when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            createSuperheroChart();
+        });
+    </script>
+</body>
+</html> 

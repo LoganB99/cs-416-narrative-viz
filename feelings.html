@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Follow the Feelings - Superhero Sentiment Analysis</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="fade-in">Follow the Feelings</h1>
+        <p class="subtitle fade-in delay-1">Superhero Movies' Rating Distribution Over Time</p>
+        
+        <div class="hero-icons fade-in delay-2">
+            📊
+        </div>
+        
+        <p class="description fade-in delay-3">
+            Explore how audience and critic sentiment toward superhero movies has evolved over the past 25 years. 
+            This heatmap reveals the distribution of movie ratings across different time periods, 
+            showing whether the genre has maintained its quality or experienced a decline in reception.
+        </p>
+        
+        <div class="data-warning fade-in delay-3">
+            <p><strong>Note:</strong> Movies with vote counts of 0 have been filtered out of this analysis to ensure data quality.</p>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="chart-section fade-in delay-4">
+            <h2>Superhero Movie Ratings: Distribution Over Time</h2>
+            <p class="chart-description">
+                Darker colors indicate more movies in that rating range for that year
+            </p>
+            <div id="sentiment-chart"></div>
+        </div>
+        
+        <!-- Back Navigation -->
+        <div class="back-nav fade-in delay-5">
+            <button class="back-btn" onclick="window.location.href='trends.html'">
+                ← Back to Trends
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // D3.js Heatmap for Sentiment Analysis
+        async function createSentimentHeatmap() {
+            // Load the CSV data
+            const data = await d3.csv("TMDB_movie_dataset_v11_clean.csv");
+            
+            // Filter for superhero movies and valid ratings
+            const superheroData = data
+                .filter(d => d.contains_superhero == 1 && d.vote_count > 0)
+                .map(d => ({
+                    year: parseInt(d.release_date),
+                    rating: parseFloat(d.vote_average),
+                    title: d.title
+                }))
+                .filter(d => d.year >= 2000 && d.year <= 2024);
+            
+            console.log("Superhero data sample:", superheroData.slice(0, 5));
+            
+            // Create rating bins (0-2, 2-4, 4-6, 6-8, 8-10)
+            const ratingBins = [
+                { min: 0, max: 2, label: "0-2", color: "#ff6b6b" },
+                { min: 2, max: 4, label: "2-4", color: "#ffa726" },
+                { min: 4, max: 6, label: "4-6", color: "#ffeb3b" },
+                { min: 6, max: 8, label: "6-8", color: "#4caf50" },
+                { min: 8, max: 10, label: "8-10", color: "#2196f3" }
+            ];
+            
+            // Group data by year and rating bin
+            const heatmapData = [];
+            const years = d3.range(2000, 2025);
+            
+            years.forEach(year => {
+                const yearMovies = superheroData.filter(d => d.year === year);
+                
+                ratingBins.forEach((bin, binIndex) => {
+                    const count = yearMovies.filter(d => d.rating >= bin.min && d.rating < bin.max).length;
+                    heatmapData.push({
+                        year: year,
+                        ratingBin: bin.label,
+                        binIndex: binIndex,
+                        count: count,
+                        movies: yearMovies.filter(d => d.rating >= bin.min && d.rating < bin.max)
+                    });
+                });
+            });
+            
+            console.log("Heatmap data sample:", heatmapData.slice(0, 10));
+            
+            // Chart dimensions
+            const margin = { top: 80, right: 150, bottom: 80, left: 100 };
+            const width = 900 - margin.left - margin.right;
+            const height = 500 - margin.top - margin.bottom;
+            
+            // Create SVG
+            const svg = d3.select("#sentiment-chart")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // Scales
+            const x = d3.scaleBand()
+                .domain(years)
+                .range([0, width])
+                .padding(0.1);
+            
+            const y = d3.scaleBand()
+                .domain(ratingBins.map(bin => bin.label))
+                .range([0, height])
+                .padding(0.1);
+            
+            const colorScale = d3.scaleSequential()
+                .domain([0, d3.max(heatmapData, d => d.count)])
+                .interpolator(d3.interpolateBlues);
+            
+            // Add X axis
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => "'" + d.toString().slice(-2)))
+                .selectAll("text")
+                .style("text-anchor", "middle")
+                .style("font-size", "10px");
+            
+            // Add Y axis
+            svg.append("g")
+                .call(d3.axisLeft(y))
+                .selectAll("text")
+                .style("font-size", "12px");
+            
+            // Add heatmap cells
+            svg.selectAll("rect")
+                .data(heatmapData)
+                .enter()
+                .append("rect")
+                .attr("x", d => x(d.year))
+                .attr("y", d => y(d.ratingBin))
+                .attr("width", x.bandwidth())
+                .attr("height", y.bandwidth())
+                .attr("fill", d => d.count > 0 ? colorScale(d.count) : "rgba(255, 255, 255, 0.1)")
+                .attr("stroke", "rgba(255, 255, 255, 0.3)")
+                .attr("stroke-width", 1)
+                .on("mouseover", function(event, d) {
+                    d3.select(this)
+                        .attr("stroke", "#fff")
+                        .attr("stroke-width", 2);
+                    
+                    // Show tooltip
+                    const tooltip = d3.select("body").append("div")
+                        .attr("class", "tooltip")
+                        .style("position", "absolute")
+                        .style("background", "rgba(0,0,0,0.9)")
+                        .style("color", "white")
+                        .style("padding", "12px")
+                        .style("border-radius", "6px")
+                        .style("pointer-events", "none")
+                        .style("font-size", "12px")
+                        .style("z-index", "1000")
+                        .style("max-width", "300px");
+                    
+                    let tooltipContent = `<strong>${d.year} - ${d.ratingBin} Rating</strong><br/>`;
+                    tooltipContent += `${d.count} superhero movies<br/>`;
+                    
+                    if (d.movies.length > 0) {
+                        tooltipContent += `<br/><strong>Sample movies:</strong><br/>`;
+                        d.movies.slice(0, 3).forEach(movie => {
+                            tooltipContent += `• ${movie.title} (${movie.rating.toFixed(1)})<br/>`;
+                        });
+                        if (d.movies.length > 3) {
+                            tooltipContent += `... and ${d.movies.length - 3} more`;
+                        }
+                    }
+                    
+                    tooltip.html(tooltipContent)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this)
+                        .attr("stroke", "rgba(255, 255, 255, 0.3)")
+                        .attr("stroke-width", 1);
+                    d3.selectAll(".tooltip").remove();
+                });
+            
+            // Add axis labels
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("x", width / 2)
+                .attr("y", height + margin.bottom - 10)
+                .style("fill", "#b8c5d6")
+                .style("font-size", "14px")
+                .text("Year");
+            
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -height / 2)
+                .attr("y", -margin.left + 20)
+                .style("fill", "#b8c5d6")
+                .style("font-size", "14px")
+                .text("Rating Range");
+            
+            // Add simple color legend
+            const legend = svg.append("g")
+                .attr("class", "legend")
+                .attr("transform", `translate(${width + 40}, 50)`);
+            
+            // Legend title
+            legend.append("text")
+                .attr("x", 0)
+                .attr("y", -20)
+                .style("fill", "#b8c5d6")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .text("Number of Movies");
+            
+            // Create discrete legend items
+            const maxCount = d3.max(heatmapData, d => d.count);
+            const legendSteps = 5;
+            const stepSize = maxCount / legendSteps;
+            
+            for (let i = 0; i <= legendSteps; i++) {
+                const value = Math.round(i * stepSize);
+                const color = colorScale(value);
+                const yPos = i * 15;
+                
+                // Color box
+                legend.append("rect")
+                    .attr("x", 0)
+                    .attr("y", yPos)
+                    .attr("width", 15)
+                    .attr("height", 12)
+                    .attr("fill", color)
+                    .attr("stroke", "rgba(255, 255, 255, 0.5)")
+                    .attr("stroke-width", 1);
+                
+                // Value label
+                legend.append("text")
+                    .attr("x", 20)
+                    .attr("y", yPos + 9)
+                    .style("fill", "#b8c5d6")
+                    .style("font-size", "10px")
+                    .text(value);
+            }
+            
+            // Add key insights annotations
+            const insights = [
+                {
+                    year: 2008,
+                    ratingBin: "6-8",
+                    text: "Iron Man era begins",
+                    offset: { x: 0, y: -25 }
+                },
+                {
+                    year: 2012,
+                    ratingBin: "6-8",
+                    text: "Avengers peak",
+                    offset: { x: 0, y: 25 }
+                },
+                {
+                    year: 2019,
+                    ratingBin: "6-8",
+                    text: "Endgame finale",
+                    offset: { x: 0, y: -25 }
+                },
+                {
+                    year: 2024,
+                    ratingBin: "4-6",
+                    text: "Recent decline?",
+                    offset: { x: -40, y: 0 }
+                }
+            ];
+            
+            insights.forEach(insight => {
+                const cell = heatmapData.find(d => d.year === insight.year && d.ratingBin === insight.ratingBin);
+                if (cell) {
+                    // Add background rectangle for better readability
+                    const textGroup = svg.append("g")
+                        .attr("transform", `translate(${x(insight.year) + x.bandwidth() / 2 + insight.offset.x}, ${y(insight.ratingBin) + y.bandwidth() / 2 + insight.offset.y})`);
+                    
+                    // Background rectangle
+                    const textNode = textGroup.append("text")
+                        .attr("text-anchor", "middle")
+                        .attr("dy", "0.35em")
+                        .style("font-size", "11px")
+                        .style("fill", "#ffffff")
+                        .style("font-weight", "bold")
+                        .style("pointer-events", "none")
+                        .text(insight.text);
+                    
+                    const bbox = textNode.node().getBBox();
+                    textGroup.insert("rect", "text")
+                        .attr("x", bbox.x - 4)
+                        .attr("y", bbox.y - 2)
+                        .attr("width", bbox.width + 8)
+                        .attr("height", bbox.height + 4)
+                        .attr("fill", "rgba(255, 107, 107, 0.9)")
+                        .attr("rx", 4)
+                        .style("pointer-events", "none");
+                    
+                    // Move text to front
+                    textGroup.select("text").raise();
+                }
+            });
+        }
+        
+        // Initialize chart when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            createSentimentHeatmap();
+            // Mark that user has visited the feelings analysis
+            localStorage.setItem('visited_feelings', 'true');
+        });
+    </script>
+</body>
+</html> 

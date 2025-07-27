@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Follow the Money - Superhero Revenue Analysis</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="fade-in">Follow the Money</h1>
+        <p class="subtitle fade-in delay-1">Superhero Movies' Share of Total Revenue</p>
+        
+        <div class="hero-icons fade-in delay-2">
+            💰
+        </div>
+        
+        <p class="description fade-in delay-3">
+            Explore how superhero movies have dominated the box office over the past 25 years. 
+            This chart shows the percentage of total movie revenue that comes from superhero films, 
+            revealing the genre's financial impact on the industry.
+        </p>
+        
+        <div class="data-warning fade-in delay-3">
+            <p><strong>Note:</strong> Movies with revenue data of $0 have been filtered out of this analysis to ensure data quality.</p>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="chart-section fade-in delay-4">
+            <h2>Superhero Movies: % of Total Revenue</h2>
+            <p class="chart-description">
+                The rise and dominance of superhero films in the global box office
+            </p>
+            <div id="revenue-chart"></div>
+        </div>
+        
+        <!-- Back Navigation -->
+        <div class="back-nav fade-in delay-5">
+            <button class="back-btn" onclick="window.location.href='trends.html'">
+                ← Back to Trends
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // D3.js Line Chart for Revenue Analysis
+        async function createRevenueChart() {
+            // Load the CSV data
+            const data = await d3.csv("TMDB_movie_dataset_v11_clean.csv");
+            
+            // Debug: Check revenue ranges
+            const revenueStats = data
+                .filter(d => d.revenue > 0)
+                .map(d => parseFloat(d.revenue));
+            
+            console.log("Revenue statistics:", {
+                min: d3.min(revenueStats),
+                max: d3.max(revenueStats),
+                mean: d3.mean(revenueStats),
+                median: d3.median(revenueStats)
+            });
+            
+            // Filter out movies with revenue == 0 and extract year and revenue
+            const validData = data
+                .filter(d => d.revenue > 0)
+                .map(d => ({
+                    year: parseInt(d.release_date),
+                    revenue: parseFloat(d.revenue),
+                    isSuperhero: d.contains_superhero == 1
+                }))
+                .filter(d => d.year >= 2000 && d.year <= 2024);
+            
+            // Group by year and calculate totals
+            const yearData = {};
+            validData.forEach(d => {
+                if (!yearData[d.year]) {
+                    yearData[d.year] = {
+                        totalRevenue: 0,
+                        superheroRevenue: 0,
+                        year: d.year,
+                        movieCount: 0,
+                        superheroCount: 0
+                    };
+                }
+                yearData[d.year].totalRevenue += d.revenue;
+                yearData[d.year].movieCount += 1;
+                if (d.isSuperhero) {
+                    yearData[d.year].superheroRevenue += d.revenue;
+                    yearData[d.year].superheroCount += 1;
+                }
+            });
+            
+            // Debug: Log some sample years
+            Object.values(yearData).slice(0, 5).forEach(year => {
+                console.log(`${year.year}: ${year.movieCount} movies, ${year.superheroCount} superhero, Total: ${formatRevenue(year.totalRevenue)}, Superhero: ${formatRevenue(year.superheroRevenue)}`);
+            });
+            
+            // Convert to array and calculate percentages
+            const chartData = Object.values(yearData)
+                .map(d => ({
+                    year: d.year,
+                    percentage: (d.superheroRevenue / d.totalRevenue) * 100,
+                    superheroRevenue: d.superheroRevenue,
+                    totalRevenue: d.totalRevenue
+                }))
+                .sort((a, b) => a.year - b.year);
+            
+            console.log("Revenue chart data:", chartData);
+            
+            // Chart dimensions
+            const margin = { top: 80, right: 100, bottom: 80, left: 80 };
+            const width = 900 - margin.left - margin.right;
+            const height = 500 - margin.top - margin.bottom;
+            
+            // Create SVG
+            const svg = d3.select("#revenue-chart")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // X scale
+            const x = d3.scaleLinear()
+                .domain(d3.extent(chartData, d => d.year))
+                .range([0, width]);
+            
+            // Y scale for percentage (left axis)
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(chartData, d => d.percentage)])
+                .range([height, 0]);
+            
+            // Y scale for revenue (right axis)
+            const y2 = d3.scaleLinear()
+                .domain([0, d3.max(chartData, d => d.totalRevenue)])
+                .range([height, 0]);
+            
+            // Function to format revenue in human-readable format
+            function formatRevenue(amount) {
+                if (amount >= 1000000000) {
+                    return `$${(amount / 1000000000).toFixed(2)}B`;
+                } else if (amount >= 1000000) {
+                    return `$${(amount / 1000000).toFixed(1)}M`;
+                } else if (amount >= 1000) {
+                    return `$${(amount / 1000).toFixed(0)}K`;
+                } else {
+                    return `$${amount.toFixed(0)}`;
+                }
+            }
+            
+            // Create line generator
+            const line = d3.line()
+                .x(d => x(d.year))
+                .y(d => y(d.percentage))
+                .curve(d3.curveMonotoneX);
+            
+            // Add X axis
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => "'" + d.toString().slice(-2)))
+                .selectAll("text")
+                .style("text-anchor", "middle")
+                .style("font-size", "12px");
+            
+            // Add Y axis (left - percentage)
+            svg.append("g")
+                .call(d3.axisLeft(y).tickFormat(d => d + "%"))
+                .selectAll("text")
+                .style("font-size", "12px");
+            
+            // Add Y axis (right - revenue)
+            svg.append("g")
+                .attr("transform", `translate(${width}, 0)`)
+                .call(d3.axisRight(y2).tickFormat(d => formatRevenue(d)))
+                .selectAll("text")
+                .style("font-size", "10px")
+                .style("fill", "#b8c5d6");
+            
+            // Add grid lines
+            svg.append("g")
+                .attr("class", "grid")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x)
+                    .tickSize(-height)
+                    .tickFormat("")
+                )
+                .style("stroke-dasharray", "3,3")
+                .style("opacity", 0.3);
+            
+            svg.append("g")
+                .attr("class", "grid")
+                .call(d3.axisLeft(y)
+                    .tickSize(-width)
+                    .tickFormat("")
+                )
+                .style("stroke-dasharray", "3,3")
+                .style("opacity", 0.3);
+            
+            // Add revenue bars (background)
+            const barWidth = width / chartData.length * 0.8; // 80% of available space
+            svg.selectAll("rect")
+                .data(chartData)
+                .enter()
+                .append("rect")
+                .attr("x", d => x(d.year) - barWidth / 2)
+                .attr("y", d => y2(d.totalRevenue))
+                .attr("width", barWidth)
+                .attr("height", d => height - y2(d.totalRevenue))
+                .attr("fill", "rgba(255, 255, 255, 0.1)")
+                .attr("stroke", "rgba(255, 255, 255, 0.2)")
+                .attr("stroke-width", 1);
+            
+            // Add the line path (foreground)
+            svg.append("path")
+                .datum(chartData)
+                .attr("fill", "none")
+                .attr("stroke", "#4ecdc4")
+                .attr("stroke-width", 3)
+                .attr("d", line);
+            
+            // Add data points
+            svg.selectAll("circle")
+                .data(chartData)
+                .enter()
+                .append("circle")
+                .attr("cx", d => x(d.year))
+                .attr("cy", d => y(d.percentage))
+                .attr("r", 4)
+                .attr("fill", "#4ecdc4")
+                .attr("stroke", "#fff")
+                .attr("stroke-width", 2)
+                .on("mouseover", function(event, d) {
+                    d3.select(this)
+                        .attr("r", 6)
+                        .attr("fill", "#ff6b6b");
+                    
+                    // Show tooltip
+                    const tooltip = d3.select("body").append("div")
+                        .attr("class", "tooltip")
+                        .style("position", "absolute")
+                        .style("background", "rgba(0,0,0,0.9)")
+                        .style("color", "white")
+                        .style("padding", "10px")
+                        .style("border-radius", "6px")
+                        .style("pointer-events", "none")
+                        .style("font-size", "12px")
+                        .style("z-index", "1000");
+                    
+                    tooltip.html(`
+                        <strong>${d.year}</strong><br/>
+                        Superhero: ${d.percentage.toFixed(1)}% of total revenue<br/>
+                        Superhero Revenue: ${formatRevenue(d.superheroRevenue)}<br/>
+                        Total Revenue: ${formatRevenue(d.totalRevenue)}
+                    `)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this)
+                        .attr("r", 4)
+                        .attr("fill", "#4ecdc4");
+                    d3.selectAll(".tooltip").remove();
+                });
+            
+            // Add axis labels
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("x", width / 2)
+                .attr("y", height + margin.bottom - 10)
+                .style("fill", "#b8c5d6")
+                .style("font-size", "14px")
+                .text("Year");
+            
+            // Left axis label (percentage)
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -height / 2)
+                .attr("y", -margin.left + 20)
+                .style("fill", "#4ecdc4")
+                .style("font-size", "14px")
+                .style("font-weight", "bold")
+                .text("Superhero % of Total Revenue");
+            
+            // Right axis label (revenue)
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -height / 2)
+                .attr("y", width + margin.right - 20)
+                .style("fill", "#b8c5d6")
+                .style("font-size", "14px")
+                .style("font-weight", "bold")
+                .text("Total Revenue (Background Bars)");
+            
+            // Add key insights annotations
+            const insights = [
+                {
+                    year: 2008,
+                    text: "Iron Man launches MCU",
+                    yOffset: -30
+                },
+                {
+                    year: 2012,
+                    text: "Avengers breaks records",
+                    yOffset: 30
+                },
+                {
+                    year: 2019,
+                    text: "Endgame peak",
+                    yOffset: -30
+                }
+            ];
+            
+            insights.forEach(insight => {
+                const dataPoint = chartData.find(d => d.year === insight.year);
+                if (dataPoint) {
+                    svg.append("text")
+                        .attr("x", x(insight.year))
+                        .attr("y", y(dataPoint.percentage) + insight.yOffset)
+                        .attr("text-anchor", "middle")
+                        .style("font-size", "10px")
+                        .style("fill", "#b8c5d6")
+                        .style("font-weight", "bold")
+                        .text(insight.text);
+                }
+            });
+        }
+        
+        // Initialize chart when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            createRevenueChart();
+            // Mark that user has visited the money analysis
+            localStorage.setItem('visited_money', 'true');
+        });
+    </script>
+</body>
+</html> 
